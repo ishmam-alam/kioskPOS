@@ -1,0 +1,243 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 Int                 @id @default(autoincrement())
+  user_id            Int                 @unique
+  pin                Int
+  name               String              @db.VarChar(100)
+  role               Int                 @default(0)
+  active             Boolean             @default(true)
+  created_at         DateTime            @default(now())
+  updated_at         DateTime            @updatedAt
+  auditLogs          AuditLog[]
+  cancellations      Cancellation[]
+  inventoryMovements InventoryMovement[]
+  sales              Sale[]
+  stockIn            StockIn[]
+
+  @@index([user_id])
+  @@index([role])
+  @@index([active])
+}
+
+model Product {
+  id          Int      @id @default(autoincrement())
+  sku         Int      @unique
+  name        String   @db.VarChar(200)
+  price_cents Int
+  piece       Boolean  @default(true)
+  stock_qty   Int      @default(0)
+  tax_rate    Float?
+  active      Boolean  @default(true)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+  inventoryMovements InventoryMovement[]
+  saleItems         SaleItem[]
+  stockIns          StockIn[]
+
+  @@index([sku])
+  @@index([active])
+  @@index([name])
+}
+
+
+model Register {
+  id                Int                  @id @default(autoincrement())
+  register_number   Int
+  name              String?
+  location          String?
+  created_at        DateTime             @default(now())
+  cancellations     Cancellation[]
+  registerReporting RegisterReporting[]
+  sales             Sale[]
+  transactionLogs   TransactionJournal[]
+  turnover          Turnover[]
+}
+
+model Sale {
+  id                 Int                  @id @default(autoincrement())
+  receipt_number     String               @unique
+  register_id        Int?
+  tse_signature      String?
+  start_at           DateTime             @default(now())
+  end_at             DateTime?
+  user_id            Int?
+  total_cents        Int
+  items              Json?
+  payment_method     String?
+  process_type       ProcessType          @default(BELEG)
+  tse_public_key     String?
+  tse_serial         String?
+  tse_sig_counter    Int?
+  tse_signature_algo String?
+  tse_signed_at      DateTime?
+  cancellations      Cancellation[]
+  payments           Payment[]
+  register           Register?            @relation(fields: [register_id], references: [id])
+  user               User?                @relation(fields: [user_id], references: [user_id])
+  saleItems          SaleItem[]
+  transactionLog     TransactionJournal[]
+}
+
+model SaleItem {
+  id                 Int     @id @default(autoincrement())
+  receipt_number     String
+  product_id         Int
+  qty                Int
+  unit_price_cents   Int
+  tax_rate           Float?
+  stock_adjusted     Boolean @default(false)
+  gross_amount_cents Int?
+  net_amount_cents   Int?
+  tax_amount_cents   Int?
+  vat_class          String?
+  product            Product @relation(fields: [product_id], references: [id])
+  sale               Sale    @relation(fields: [receipt_number], references: [receipt_number])
+
+  @@index([receipt_number])
+  @@index([product_id])
+  @@index([vat_class])
+}
+
+model Cancellation {
+  id             Int                  @id @default(autoincrement())
+  receipt_number String?
+  register_id    Int?
+  tse_signature  String?
+  canceled_at    DateTime             @default(now())
+  user_id        Int?
+  reason         String?
+  amount_cents   Int?
+  payment_method String?
+  stock_adjusted Boolean              @default(false)
+  sale           Sale?                @relation(fields: [receipt_number], references: [receipt_number])
+  register       Register?            @relation(fields: [register_id], references: [id])
+  user           User?                @relation(fields: [user_id], references: [user_id])
+  transactionLog TransactionJournal[]
+}
+
+model StockIn {
+  id             Int      @id @default(autoincrement())
+  product_id     Int?
+  added_qty      Int
+  received_at    DateTime @default(now())
+  supplier       String?
+  user_id        Int?
+  stock_adjusted Boolean  @default(false)
+  product        Product? @relation(fields: [product_id], references: [id])
+  user           User?    @relation(fields: [user_id], references: [user_id])
+}
+
+model Turnover {
+  id                  Int       @id @default(autoincrement())
+  register_id         Int?
+  date                DateTime?
+  total_sales_cents   Int       @default(0)
+  total_refunds_cents Int       @default(0)
+  net_turnover_cents  Int       @default(0)
+  created_at          DateTime  @default(now())
+  register            Register? @relation(fields: [register_id], references: [id])
+}
+
+model TSEDevice {
+  id                Int                 @id @default(autoincrement())
+  serial_number     String              @unique
+  vendor            String?
+  cert_start        DateTime?
+  cert_end          DateTime?
+  created_at        DateTime            @default(now())
+  registerReporting RegisterReporting[]
+}
+
+model RegisterReporting {
+  id          Int        @id @default(autoincrement())
+  tse_id      Int?
+  register_id Int?
+  report_type String?
+  reported_at DateTime?
+  status      String?
+  register    Register?  @relation(fields: [register_id], references: [id])
+  tse         TSEDevice? @relation(fields: [tse_id], references: [id])
+}
+
+model DSFinvKExport {
+  id           Int       @id @default(autoincrement())
+  period_start DateTime?
+  period_end   DateTime?
+  created_at   DateTime  @default(now())
+  file_path    String?
+}
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  table_name String?
+  record_id  Int?
+  action     String?
+  user_id    Int?
+  timestamp  DateTime @default(now())
+  old_value  Json?
+  new_value  Json?
+  user       User?    @relation(fields: [user_id], references: [user_id])
+}
+
+model InventoryMovement {
+  id              Int      @id @default(autoincrement())
+  product_id      Int?
+  user_id         Int?
+  created_at      DateTime @default(now())
+  change_qty      Int?
+  resulting_qty   Int?
+  movement_type   String?
+  reference_table String?
+  reference_id    Int?
+  note            String?
+  product         Product? @relation(fields: [product_id], references: [id])
+  user            User?    @relation(fields: [user_id], references: [user_id])
+}
+
+model DailySalesSummary {
+  id               Int       @id @default(autoincrement())
+  date             DateTime?
+  total_sales_euro Float?
+  created_at       DateTime  @default(now())
+}
+
+model Payment {
+  id           Int    @id @default(autoincrement())
+  sale_id      Int
+  method       String
+  amount_cents Int
+  sale         Sale   @relation(fields: [sale_id], references: [id])
+
+  @@index([sale_id])
+}
+
+model TransactionJournal {
+  id          Int           @id @default(autoincrement())
+  sale_id     Int?
+  cancel_id   Int?
+  register_id Int
+  tse_serial  String
+  tse_sig     String
+  prev_hash   String?
+  curr_hash   String
+  created_at  DateTime      @default(now())
+  cancel      Cancellation? @relation(fields: [cancel_id], references: [id])
+  register    Register      @relation(fields: [register_id], references: [id])
+  sale        Sale?         @relation(fields: [sale_id], references: [id])
+
+  @@index([register_id])
+}
+
+enum ProcessType {
+  BELEG
+  STORNO
+  ABSCHLUSS
+}
